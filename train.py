@@ -1,96 +1,55 @@
-import os
-import torch
-import random
 import warnings
-import argparse
-import numpy as np
-import pickle as pk
-import pytorch_lightning as pl
-from tool import METRICS
-from model import GraphBepi
-from dataset import PDB,PDB_foldseek,collate_fn,chain
-from torch.utils.data import DataLoader,Dataset
-from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import Callback,EarlyStopping,ModelCheckpoint
 warnings.simplefilter('ignore')
+from tool import METRICS
+from model import GraphBepi, GraphBepi_att
+from dataset import (
+    PDB, PDB_esm, PDB_token_esm, PDB_saport,
+    PDB_foldseek, PDB_foldseek_local_golbal, PDB_foldseek_attn,
+    PDB_esm_if, PDB_esm_if_foldseek_tokens,
+    PDB_structure, PDB_esm_structure,
+    collate_fn, collate_fn_fold_tokens,
+)
+from train_utils import seed_everything, build_arg_parser, run_training
 
-def seed_everything(seed=2022):
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.deterministic = True
+# Registry: mode -> (dataset_class, feat_dim, model_class, collate_fn, use_early_stop, needs_sub_dir)
+CONFIGS = {
+    'esm2_3b':        (PDB,                          2560,        GraphBepi,     collate_fn,             False, False),
+    'esm2_650m':      (PDB,                          1280,        GraphBepi,     collate_fn,             True,  False),
+    'esm2_3b_es':     (PDB,                          2560,        GraphBepi,     collate_fn,             True,  False),
+    'esm_t':          (PDB_token_esm,                2560+640,    GraphBepi,     collate_fn,             False, False),
+    'saport':         (PDB_saport,                   446,         GraphBepi,     collate_fn,             False, False),
+    'esm2_gangxu':    (PDB_esm,                      2560,        GraphBepi,     collate_fn,             False, False),
+    'structure':      (PDB_structure,                640,         GraphBepi,     collate_fn,             False, True),
+    'esm2_structure': (PDB_esm_structure,            2560+640,    GraphBepi,     collate_fn,             False, True),
+    'saport_gangxu':  (PDB_saport,                   446,         GraphBepi,     collate_fn,             False, False),
+    'foldseek_multi': (PDB_foldseek,                 2686,        GraphBepi,     collate_fn,             True,  False),
+    'foldseek_single':(PDB_foldseek_local_golbal,    2581+21,     GraphBepi,     collate_fn,             False, False),
+    'foldseek_attn':  (PDB_foldseek_attn,            2581,        GraphBepi_att, collate_fn_fold_tokens, True,  False),
+    'esm_if':         (PDB_esm_if,                   2560+512,    GraphBepi,     collate_fn,             False, False),
+    'esm_if_foldseek':(PDB_esm_if_foldseek_tokens,   2560+512+21, GraphBepi,     collate_fn,             False, False),
+}
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--lr', type=float, default=1e-6, help='learning rate.')
-parser.add_argument('--gpu', type=int, default=0, help='gpu.')
-parser.add_argument('--fold', type=int, default=-1, help='dataset fold. set it -1 to use the whole trainset')
-parser.add_argument('--seed', type=int, default=2022, help='random seed.')
-parser.add_argument('--batch', type=int, default=4, help='batch size.')
-parser.add_argument('--hidden', type=int, default=256, help='hidden dim.')
-parser.add_argument('--epochs', type=int, default=300, help='max number of epochs.')
-parser.add_argument('--dataset', type=str, default='BCE_633', help='dataset name.')
-parser.add_argument('--logger', type=str, default='./log', help='logger path.')
-parser.add_argument('--tag', type=str, default='GraphBepi', help='logger name.')
-
+parser = build_arg_parser()
+parser.add_argument('--mode', type=str, required=True, choices=CONFIGS,
+                    help='feature configuration to use.')
+parser.add_argument('--sub_dir', type=str, default='BCE_633',
+                    help='structure feature sub-directory (used by structure/esm2_structure modes).')
 args = parser.parse_args()
-
-device='cpu' if args.gpu==-1 else f'cuda:{args.gpu}'
 seed_everything(args.seed)
-root=f'./data/{args.dataset}'
 
-trainset=PDB(mode='train',fold=args.fold,root=root)
-valset=PDB(mode='val',fold=args.fold,root=root)
-testset=PDB(mode='test',fold=args.fold,root=root)
+dataset_cls, feat_dim, model_cls, cfn, use_es, needs_sub_dir = CONFIGS[args.mode]
+device   = 'cpu' if args.gpu == -1 else f'cuda:{args.gpu}'
+root     = f'./data/{args.dataset}'
+log_name = f'{args.dataset}_{args.tag}'
 
-train_loader=DataLoader(trainset,batch_size=args.batch,shuffle=True,collate_fn=collate_fn,drop_last=True)
-val_loader=DataLoader(valset,batch_size=args.batch,shuffle=False,collate_fn=collate_fn)
-test_loader=DataLoader(testset,batch_size=args.batch,shuffle=False,collate_fn=collate_fn)
-if args.fold==-1:
-    val_loader=test_loader
-    
-log_name=f'{args.dataset}_{args.tag}'
-metrics=METRICS(device)
-model=GraphBepi(
-    feat_dim=2560,                     # esm2 representation dim
-    hidden_dim=args.hidden,            # hidden representation dim
-    exfeat_dim=13,                     # dssp feature dim
-    edge_dim=51,                       # edge feature dim
-    augment_eps=0.05,                  # random noise rate
-    dropout=0.2,
-    lr=args.lr,                        # learning rate
-    metrics=metrics,                   # an implement to compute performance
-    result_path=f'./model/{log_name}', # path to save temporary result file of testset
-)
+ds_kwargs = {'sub_dir': args.sub_dir} if needs_sub_dir else {}
+trainset = dataset_cls(mode='train', fold=args.fold, root=root, **ds_kwargs)
+valset   = dataset_cls(mode='val',   fold=args.fold, root=root, **ds_kwargs)
+testset  = dataset_cls(mode='test',  fold=args.fold, root=root, **ds_kwargs)
 
-es=EarlyStopping('val_AUPRC',patience=40,mode='max')
-mc=ModelCheckpoint(
-    f'./model/{log_name}/',f'model_{args.fold}',
-    'val_AUPRC',
-    mode='max',
-    save_weights_only=True, 
+model = model_cls(
+    feat_dim=feat_dim, hidden_dim=args.hidden, exfeat_dim=13, edge_dim=51,
+    augment_eps=0.05, dropout=0.2, lr=args.lr,
+    metrics=METRICS(device), result_path=f'./model/{log_name}',
 )
-logger = TensorBoardLogger(
-    args.logger, 
-    name=log_name+f'_{args.fold}'
-)
-
-#cb=[mc,es]
-cb=[mc]
-trainer = pl.Trainer(
-    accelerator="gpu" if args.gpu!=-1 else "cpu", 
-    max_epochs=args.epochs, callbacks=cb,
-    logger=logger,check_val_every_n_epoch=1,
-)
-
-if os.path.exists(f'./model/{log_name}/model_{args.fold}.ckpt'):
-    os.remove(f'./model/{log_name}/model_{args.fold}.ckpt')
-    
-trainer.fit(model, train_loader, val_loader)
-model.load_state_dict(
-    torch.load(f'./model/{log_name}/model_{args.fold}.ckpt')['state_dict'],
-)
-trainer = pl.Trainer(accelerator="gpu" if args.gpu!=-1 else "cpu",logger=logger)
-result = trainer.test(model,test_loader)
-os.rename(f'./model/{log_name}/result.pkl',f'./model/{log_name}/result_{args.fold}.pkl')
+run_training(model, trainset, valset, testset, args, cfn, use_early_stop=use_es)
