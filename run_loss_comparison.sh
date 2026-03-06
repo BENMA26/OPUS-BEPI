@@ -6,13 +6,13 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --gres=gpu:1
-#SBATCH --time=24:00:00
-#SBATCH --partition=gpu          # modify to your partition name
+#SBATCH --gres=gpu:4
+#SBATCH --time=1440:00:00
+#SBATCH --partition=8gpu          # modify to your partition name
 
 # ── Environment ───────────────────────────────────────────────────────────────
 source ~/.bashrc
-conda activate bepi              # modify to your conda env name
+conda activate epitope           # modify to your conda env name
 
 cd /work/home/maben/project/epitope_prediction/GraphBepi
 
