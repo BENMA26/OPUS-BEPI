@@ -9,7 +9,7 @@ from dataset import (
     PDB_structure, PDB_esm_structure,
     collate_fn, collate_fn_fold_tokens,
 )
-from train_utils import seed_everything, build_arg_parser, run_training
+from train_utils import seed_everything, build_arg_parser, build_loss_fn, run_training
 
 # Registry: mode -> (dataset_class, feat_dim, model_class, collate_fn, use_early_stop, needs_sub_dir)
 CONFIGS = {
@@ -36,6 +36,7 @@ parser.add_argument('--sub_dir', type=str, default='BCE_633',
                     help='structure feature sub-directory (used by structure/esm2_structure modes).')
 args = parser.parse_args()
 seed_everything(args.seed)
+loss_fn = build_loss_fn(args)
 
 dataset_cls, feat_dim, model_cls, cfn, use_es, needs_sub_dir = CONFIGS[args.mode]
 device   = 'cpu' if args.gpu == -1 else f'cuda:{args.gpu}'
@@ -51,5 +52,6 @@ model = model_cls(
     feat_dim=feat_dim, hidden_dim=args.hidden, exfeat_dim=13, edge_dim=51,
     augment_eps=0.05, dropout=0.2, lr=args.lr,
     metrics=METRICS(device), result_path=f'./model/{log_name}',
+    loss_fn=loss_fn,
 )
 run_training(model, trainset, valset, testset, args, cfn, use_early_stop=use_es)

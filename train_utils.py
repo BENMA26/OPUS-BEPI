@@ -3,6 +3,7 @@ import random
 import warnings
 import numpy as np
 import torch
+import torch.nn as nn
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -32,7 +33,49 @@ def build_arg_parser():
     parser.add_argument('--dataset', type=str, default='BCE_633', help='dataset name.')
     parser.add_argument('--logger', type=str, default='./log', help='logger path.')
     parser.add_argument('--tag', type=str, default='GraphBepi', help='logger name.')
+    # ── Loss function ──────────────────────────────────────────────────────────
+    parser.add_argument('--loss', type=str, default='bce',
+                        choices=['bce', 'afl', 'bce_dice', 'smooth_bce', 'pu'],
+                        help='Loss function. bce=baseline, afl=AsymmetricFocal, '
+                             'bce_dice=BCE+Dice, smooth_bce=LabelSmoothing, pu=nnPU.')
+    # AFL params
+    parser.add_argument('--afl_gamma_pos', type=float, default=0.0,
+                        help='[AFL] focusing exponent for positives (default 0 = no focusing).')
+    parser.add_argument('--afl_gamma_neg', type=float, default=2.0,
+                        help='[AFL] focusing exponent for negatives.')
+    parser.add_argument('--afl_clip', type=float, default=0.05,
+                        help='[AFL] probability shift margin for negatives.')
+    # BCE+Dice params
+    parser.add_argument('--dice_alpha', type=float, default=0.5,
+                        help='[BCE+Dice] weight of BCE term (0=pure Dice, 1=pure BCE).')
+    # Label-smoothing params
+    parser.add_argument('--smooth_eps', type=float, default=0.05,
+                        help='[smooth_bce] positive-side smoothing epsilon.')
+    # PU params
+    parser.add_argument('--pu_prior', type=float, default=0.15,
+                        help='[pu] prior P(y=1); typical epitope fraction ~0.15.')
     return parser
+
+
+def build_loss_fn(args):
+    """Construct the loss function from parsed args."""
+    from losses import AsymmetricFocalLoss, BCEDiceLoss, LabelSmoothingBCELoss, PULoss
+    if args.loss == 'bce':
+        return nn.BCELoss()
+    elif args.loss == 'afl':
+        return AsymmetricFocalLoss(
+            gamma_pos=args.afl_gamma_pos,
+            gamma_neg=args.afl_gamma_neg,
+            clip=args.afl_clip,
+        )
+    elif args.loss == 'bce_dice':
+        return BCEDiceLoss(alpha=args.dice_alpha)
+    elif args.loss == 'smooth_bce':
+        return LabelSmoothingBCELoss(eps=args.smooth_eps)
+    elif args.loss == 'pu':
+        return PULoss(prior=args.pu_prior)
+    else:
+        raise ValueError(f"Unknown loss: {args.loss}")
 
 
 def run_training(model, trainset, valset, testset, args, collate_fn, use_early_stop=False):

@@ -137,11 +137,12 @@ def _build_graph_model(feat_dim, hidden_dim, exfeat_dim, edge_dim, dropout):
 
 class GraphBepi(BaseLightningModel):
     def __init__(self, feat_dim=2560, hidden_dim=256, exfeat_dim=13, edge_dim=51,
-                 augment_eps=0.05, dropout=0.2, lr=1e-6, metrics=None, result_path=None):
+                 augment_eps=0.05, dropout=0.2, lr=1e-6, metrics=None, result_path=None,
+                 loss_fn=None):
         super().__init__()
         self.metrics = metrics
         self.path = result_path
-        self.loss_fn = nn.BCELoss()
+        self.loss_fn = loss_fn if loss_fn is not None else nn.BCELoss()
         self.exfeat_dim = exfeat_dim
         self.augment_eps = augment_eps
         self.lr = lr
@@ -183,11 +184,12 @@ class GraphBepi(BaseLightningModel):
 
 class GraphBepi_att(BaseLightningModel):
     def __init__(self, feat_dim=2581, hidden_dim=256, exfeat_dim=13, edge_dim=51,
-                 augment_eps=0.05, dropout=0.2, lr=1e-6, metrics=None, result_path=None):
+                 augment_eps=0.05, dropout=0.2, lr=1e-6, metrics=None, result_path=None,
+                 loss_fn=None):
         super().__init__()
         self.metrics = metrics
         self.path = result_path
-        self.loss_fn = nn.BCELoss()
+        self.loss_fn = loss_fn if loss_fn is not None else nn.BCELoss()
         self.exfeat_dim = exfeat_dim
         self.augment_eps = augment_eps
         self.lr = lr
