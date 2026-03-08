@@ -46,8 +46,15 @@ DATASET=${DATASETS[$DATASET_IDX]}
 TAG="dpo_gangxu_beta${BETA}_lambda${LAMBDA}_lr${LR}"
 
 # Reference checkpoint path (pre-trained model)
-# Modify this to point to your pre-trained esm_gangxu model checkpoint
+# This should point to the trained esm_gangxu model checkpoint
 REF_CKPT="./model/${DATASET}_GraphBepi_gangxu/model_-1.ckpt"
+
+# Check if reference checkpoint exists
+if [ ! -f "${REF_CKPT}" ]; then
+    echo "ERROR: Reference checkpoint not found: ${REF_CKPT}"
+    echo "Please train the base model first using: sbatch run_train_esm_gangxu.sh"
+    exit 1
+fi
 
 echo "=============================================="
 echo "TASK_ID   : ${TASK_ID}"

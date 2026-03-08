@@ -5,7 +5,7 @@ from model import GraphBepi, GraphBepi_att
 from dataset import (
     PDB, PDB_esm, PDB_token_esm, PDB_saport,
     PDB_foldseek, PDB_foldseek_local_golbal, PDB_foldseek_attn,
-    PDB_esm_if, PDB_esm_if_foldseek_tokens,
+    PDB_esm_if, PDB_esm_if_foldseek_tokens, PDB_foldseek_tokens,
     PDB_structure, PDB_esm_structure,
     collate_fn, collate_fn_fold_tokens,
 )
@@ -19,6 +19,7 @@ CONFIGS = {
     'esm_t':          (PDB_token_esm,                2560+640,    GraphBepi,     collate_fn,             False, False),
     'saport':         (PDB_saport,                   446,         GraphBepi,     collate_fn,             False, False),
     'esm2_gangxu':    (PDB_esm,                      2560,        GraphBepi,     collate_fn,             False, False),
+    'esm_gangxu':     (PDB_foldseek_tokens,          2581,        GraphBepi,     collate_fn,             False, False),
     'structure':      (PDB_structure,                640,         GraphBepi,     collate_fn,             False, True),
     'esm2_structure': (PDB_esm_structure,            2560+640,    GraphBepi,     collate_fn,             False, True),
     'saport_gangxu':  (PDB_saport,                   446,         GraphBepi,     collate_fn,             False, False),
