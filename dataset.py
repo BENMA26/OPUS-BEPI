@@ -184,6 +184,19 @@ class PDB_DPO(BasePDB):
         return {**self._pack(seq, feat), 'coord': seq.coord, 'rsa': seq.rsa}
 
 
+class PDB_DPO_gangxu(BasePDB):
+    """
+    Dataset for DPO training with GangXu FoldSeek tokens.
+    Combines ESM-2 + DSSP + FoldSeek tokens from gang_xu directory.
+    """
+    def __getitem__(self, idx):
+        seq, base_feat = self._base_item(idx)
+        vector = torch.load(os.path.join(_FOLD_SEEK_GANGXU, f"{seq.name}.pt")).unsqueeze(0)
+        onehot = F.one_hot(vector.long(), num_classes=21).permute(0, 2, 1).reshape(21, -1).t()
+        feat = torch.cat([base_feat, onehot], 1)
+        return {**self._pack(seq, feat), 'coord': seq.coord, 'rsa': seq.rsa}
+
+
 def collate_fn_dpo(batch):
     """
     Collate for DPO training.
