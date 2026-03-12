@@ -115,18 +115,66 @@ model.load_state_dict(
 )
 trainer = pl.Trainer(gpus=[args.gpu],logger=None)
 result = trainer.test(model,test_loader)
-pred=torch.load(f'{args.output}/result.pkl')['pred']
+result = torch.load(f'{args.output}/result.pkl')
+pred = result['pred']
+gt = result.get('gt', None)
+threshold = result.get('threshold', args.threshold)
+tp = result.get('tp', None)
+tn = result.get('tn', None)
+fp = result.get('fp', None)
+fn = result.get('fn', None)
+
 IDX=[]
 for i in range(len(testset)):
     IDX+=[i]*len(testset.data[i])
 IDX=torch.LongTensor(IDX)
+
 for i in range(len(testset)):
     idx=IDX==i
     predi=pred[idx]
     seqi=testset.data[i].sequence
-    labeli=torch.where(predi>args.threshold,1,0).bool()
-    df=pd.DataFrame({'resn':list(seqi),'score':predi,'is epitope':labeli})
-    df.to_csv(f'{args.output}/{testset.data[i].name}.csv',index=False)
+    labeli=torch.where(predi>threshold,1,0).bool()
+
+    # 创建基础数据
+    data = {
+        'position': list(range(1, len(seqi) + 1)),
+        'resn': list(seqi),
+        'score': predi.numpy(),
+        'is_epitope': labeli.numpy()
+    }
+
+    # 如果有真实标签和分类信息，添加到输出
+    if gt is not None:
+        data['true_label'] = gt[idx].numpy()
+
+    if tp is not None and tn is not None and fp is not None and fn is not None:
+        chain_tp = tp[idx]
+        chain_tn = tn[idx]
+        chain_fp = fp[idx]
+        chain_fn = fn[idx]
+
+        classification = []
+        for j in range(len(predi)):
+            if chain_tp[j]:
+                classification.append('TP')
+            elif chain_tn[j]:
+                classification.append('TN')
+            elif chain_fp[j]:
+                classification.append('FP')
+            elif chain_fn[j]:
+                classification.append('FN')
+            else:
+                classification.append('Unknown')
+
+        data['classification'] = classification
+        data['is_TP'] = chain_tp.numpy()
+        data['is_TN'] = chain_tn.numpy()
+        data['is_FP'] = chain_fp.numpy()
+        data['is_FN'] = chain_fn.numpy()
+
+    df = pd.DataFrame(data)
+    df.to_csv(f'{args.output}/{testset.data[i].name}.csv', index=False)
+
 os.remove(f'{args.output}/result.pkl')
 print('Fin')
 

@@ -102,7 +102,30 @@ class BaseLightningModel(pl.LightningModule):
                  on_epoch=True, prog_bar=True, logger=True)
         if self.path:
             os.makedirs(self.path, exist_ok=True)
-            torch.save({'pred': pred.cpu(), 'gt': y.cpu()}, f'{self.path}/result.pkl')
+
+            # Calculate optimal threshold
+            threshold = self.metrics.calc_thresh(pred.detach().clone(), y.detach().clone()) if self.metrics else 0.5
+
+            # Convert predictions to binary using threshold
+            pred_binary = (pred.cpu() > threshold).long()
+            y_cpu = y.cpu().long()
+
+            # Calculate TP, TN, FP, FN for each position
+            tp = ((pred_binary == 1) & (y_cpu == 1)).long()
+            tn = ((pred_binary == 0) & (y_cpu == 0)).long()
+            fp = ((pred_binary == 1) & (y_cpu == 0)).long()
+            fn = ((pred_binary == 0) & (y_cpu == 1)).long()
+
+            # Save results with classification details
+            torch.save({
+                'pred': pred.cpu(),
+                'gt': y.cpu(),
+                'threshold': threshold,
+                'tp': tp,
+                'tn': tn,
+                'fp': fp,
+                'fn': fn
+            }, f'{self.path}/result.pkl')
         if self.metrics is not None:
             result = self.metrics(pred.detach().clone(), y.detach().clone())
             self.log('test_AUROC', result['AUROC'], on_epoch=True, prog_bar=True, logger=True)
